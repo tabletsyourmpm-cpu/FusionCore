@@ -19,6 +19,7 @@ import java.util.Arrays;
 import dev.allofus.fusioncore.BuildConfig;
 import dev.allofus.fusioncore.R;
 import dev.allofus.fusioncore.StubActivity;
+import dev.allofus.fusioncore.StubActivityVr;
 import top.canyie.pine.Pine;
 import top.canyie.pine.callback.MethodHook;
 
@@ -42,6 +43,17 @@ public class InstrumentationHooks {
      * Oculus VR intent category.
      */
     public static final String EXTRA_STUB_CLASS = "fusioncore.stub_class";
+
+    /**
+     * Process-wide VR launch flag, set by BootstrapActivity before launching the game.
+     * Makes secondary in-game activity launches (which go through getInjectedIntent)
+     * use the VR stub as well.
+     */
+    private static boolean sIsVrLaunch = false;
+
+    public static void setVrLaunch(boolean vrLaunch) {
+        sIsVrLaunch = vrLaunch;
+    }
 
     public static boolean areHooksInstalled = false;
 
@@ -263,10 +275,13 @@ public class InstrumentationHooks {
     }
 
     /**
-     * Picks which stub activity hosts the game. Defaults to StubActivity; callers can
-     * request another stub (e.g. StubActivityVr for VR games) via EXTRA_STUB_CLASS.
+     * Picks which stub activity hosts the game. Defaults to StubActivity; a VR launch
+     * (see {@link #setVrLaunch}) or an explicit EXTRA_STUB_CLASS selects another stub.
      */
     private static String resolveStubClassName(Intent intent) {
+        if (sIsVrLaunch) {
+            return StubActivityVr.class.getName();
+        }
         String requested = intent.getStringExtra(EXTRA_STUB_CLASS);
         if (requested != null && !requested.isEmpty()) {
             try {

@@ -185,7 +185,13 @@ public class BootstrapActivity extends AppCompatActivity {
 
                     // Using the stub activity intent here avoids one extra layer of hooks running.
                     // Its not necessary but could be more performant.
-                    var intentWrapped = new Intent(this, StubActivity.class);
+                    // NOTE: the component set here is what the system actually launches.
+                    // VR games must go through StubActivityVr (whose manifest entry declares
+                    // the Oculus VR category) so Quest enters immersive VR mode instead of
+                    // silently dropping the launch.
+                    Class<?> stubClass = isVrGame ? StubActivityVr.class : StubActivity.class;
+                    InstrumentationHooks.setVrLaunch(isVrGame);
+                    var intentWrapped = new Intent(this, stubClass);
                     intentWrapped.putExtra(InstrumentationHooks.EXTRA_IS_DYNAMIC_ACTIVITY, true);
                     intentWrapped.putExtra(InstrumentationHooks.EXTRA_ORIGINAL_INTENT, intent);
                     intentWrapped.putExtra(InstrumentationHooks.EXTRA_FUSION_CONFIG, config);
