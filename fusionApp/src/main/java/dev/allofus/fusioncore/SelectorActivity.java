@@ -1,5 +1,7 @@
 package dev.allofus.fusioncore;
 
+import android.app.AlertDialog;
+import android.content.ComponentName;
 import android.content.Intent;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageInfo;
@@ -20,6 +22,7 @@ import android.widget.ArrayAdapter;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.ListView;
+import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -28,6 +31,7 @@ import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
+import androidx.core.content.FileProvider;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -39,7 +43,9 @@ import java.util.Set;
 import java.util.zip.ZipFile;
 
 import dev.allofus.fusioncore.tools.CrashDetector;
+import dev.allofus.fusioncore.tools.FusionLogger;
 import dev.allofus.fusioncore.tools.Utilities;
+import dev.allofus.fusioncore.tools.VrLaunchUtils;
 
 public class SelectorActivity extends AppCompatActivity {
     private static final String TAG = "FusionCore";
@@ -58,6 +64,9 @@ public class SelectorActivity extends AppCompatActivity {
         View root = findViewById(R.id.selector_root);
         int basePadding = Math.round(getResources().getDisplayMetrics().density * 16f);
         Utilities.applyWindowInsets(root, basePadding);
+
+        findViewById(R.id.selector_action_vr_test).setOnClickListener(v -> showVrTestDialog());
+        findViewById(R.id.selector_action_logs).setOnClickListener(v -> shareLatestLog());
 
         var handler = new Handler(getMainLooper());
         handler.postDelayed(()->{
@@ -258,6 +267,78 @@ public class SelectorActivity extends AppCompatActivity {
 
             Log.i(TAG, "Found installed target: " + packageName + " (" + label + ")");
             result.add(new AppEntry(packageName, label, icon, versionName, versionCode));
+        }
+    }
+
+    /**
+     * "VR Test" button: shows every detected game with its VR/2D classification.
+     * Tapping a game runs the full launch diagnostic (same logic BootstrapActivity
+     * uses) and displays exactly how the game would be launched.
+     */
+    private void showVrTestDialog() {
+        List<AppEntry> targets = resolveInstalledTargets();
+        if (targets.isEmpty()) {
+            Toast.makeText(this, getString(R.string.selector_empty_not_installed), Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        String[] labels = new String[targets.size()];
+        for (int i = 0; i < targets.size(); i++) {
+            AppEntry entry = targets.get(i);
+            ComponentName launcher = VrLaunchUtils.resolveLauncherComponent(this, entry.packageName());
+            boolean vr = VrLaunchUtils.isVrGame(getPackageManager(), entry.packageName(), launcher);
+            labels[i] = entry.label() + " (" + entry.packageName() + ") [" + (vr ? "VR" : "2D") + "]";
+        }
+
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.selector_vr_test_title)
+                .setMessage(R.string.selector_vr_test_pick)
+                .setItems(labels, (dialog, which) ->
+                        showLaunchDiagnostic(targets.get(which).packageName()))
+                .setNegativeButton(android.R.string.cancel, null)
+                .show();
+    }
+
+    private void showLaunchDiagnostic(String packageName) {
+        String plan = VrLaunchUtils.describeLaunchPlan(this, packageName);
+        FusionLogger.i("VrTest", "Launch diagnostic for " + packageName + ":\n" + plan);
+
+        TextView textView = new TextView(this);
+        textView.setText(plan);
+        int padding = Math.round(getResources().getDisplayMetrics().density * 20f);
+        textView.setPadding(padding, padding, padding, padding);
+        textView.setTextIsSelectable(true);
+        ScrollView scrollView = new ScrollView(this);
+        scrollView.addView(textView);
+
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.selector_vr_test_result_title)
+                .setView(scrollView)
+                .setPositiveButton(android.R.string.ok, null)
+                .setNeutralButton(R.string.selector_view_logs, (d, w) -> shareLatestLog())
+                .show();
+    }
+
+    /**
+     * "Logs" button: shares the latest FusionCore log file so it can be sent
+     * for debugging.
+     */
+    private void shareLatestLog() {
+        File log = FusionLogger.getLatestLogFile();
+        if (log == null || !log.exists()) {
+            Toast.makeText(this, getString(R.string.selector_no_log_yet), Toast.LENGTH_LONG).show();
+            return;
+        }
+        try {
+            Uri uri = FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", log);
+            Intent share = new Intent(Intent.ACTION_SEND);
+            share.setType("text/plain");
+            share.putExtra(Intent.EXTRA_STREAM, uri);
+            share.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            startActivity(Intent.createChooser(share, getString(R.string.selector_log_share_title)));
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to share log", e);
+            Toast.makeText(this, Log.getStackTraceString(e), Toast.LENGTH_LONG).show();
         }
     }
 

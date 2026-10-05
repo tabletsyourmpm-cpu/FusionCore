@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- FusionCore writes logs and crash files under /sdcard/FusionCore/ -->
+    <external-path name="fusioncore" path="FusionCore/" />
+</paths>

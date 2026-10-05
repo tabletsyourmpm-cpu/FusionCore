@@ -20,6 +20,7 @@ import dev.allofus.fusioncore.BuildConfig;
 import dev.allofus.fusioncore.R;
 import dev.allofus.fusioncore.StubActivity;
 import dev.allofus.fusioncore.StubActivityVr;
+import dev.allofus.fusioncore.tools.FusionLogger;
 import top.canyie.pine.Pine;
 import top.canyie.pine.callback.MethodHook;
 
@@ -79,6 +80,7 @@ public class InstrumentationHooks {
             hookActivityOnCreate(fusionContext);
 
             areHooksInstalled = true;
+            FusionLogger.i(TAG, "Instrumentation hooks installed");
             Log.d(TAG, "Successfully installed Instrumentation hooks");
         } catch (Exception e) {
             Log.e(TAG, "Failed to install Instrumentation hooks", e);
@@ -241,6 +243,8 @@ public class InstrumentationHooks {
             if (original != null && original.getComponent() != null) {
                 callFrame.args[intentIdx] = original;
                 callFrame.args[strIdx] = original.getComponent().getClassName();
+                FusionLogger.i(TAG, "newActivity: swapped stub for real activity "
+                        + original.getComponent().flattenToShortString());
                 Log.d(TAG, "newActivity: intercepted StubActivity for dynamic origin");
             } else {
                 Log.e(TAG, "Failed to resolve original intent or component was null!");
@@ -270,7 +274,9 @@ public class InstrumentationHooks {
         Intent newIntent = new Intent(intent);
         newIntent.putExtra(EXTRA_IS_DYNAMIC_ACTIVITY, true);
         newIntent.putExtra(EXTRA_ORIGINAL_INTENT, intent);
-        newIntent.setComponent(new ComponentName(BuildConfig.APPLICATION_ID, resolveStubClassName(intent)));
+        String stubClass = resolveStubClassName(intent);
+        FusionLogger.i(TAG, "Injecting stub for " + intent.getComponent() + " -> " + stubClass);
+        newIntent.setComponent(new ComponentName(BuildConfig.APPLICATION_ID, stubClass));
         return newIntent;
     }
 

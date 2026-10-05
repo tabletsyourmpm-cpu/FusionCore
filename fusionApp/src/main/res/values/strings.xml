@@ -4,6 +4,13 @@
     <string name="selector_title">Select a game</string>
     <string name="selector_subtitle">Supported packages are listed below.</string>
     <string name="selector_action_settings">Settings</string>
+    <string name="selector_vr_test">VR Test</string>
+    <string name="selector_view_logs">Logs</string>
+    <string name="selector_vr_test_title">VR launch test</string>
+    <string name="selector_vr_test_pick">Pick a game to test how it would launch:</string>
+    <string name="selector_vr_test_result_title">Launch diagnostic</string>
+    <string name="selector_no_log_yet">No log file yet. Launch a game or run a VR test first.</string>
+    <string name="selector_log_share_title">Share FusionCore log</string>
     <string name="settings_title">Settings</string>
     <string name="settings_action_back">Back</string>
     <string name="settings_libunity_title">Download unstripped libunity</string>
