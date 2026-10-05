@@ -21,6 +21,9 @@
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
   <uses-feature android:glEsVersion="0x00030000" />
   <uses-feature android:name="android.hardware.vulkan.version" android:required="false" />
+  <!-- Declared not-required so flat (non-VR) installs are unaffected, but present so
+       the OS knows this app can host immersive VR activities (StubActivityVr). -->
+  <uses-feature android:name="android.hardware.vr.headtracking" android:required="false" android:version="1" />
   <uses-feature android:name="android.software.home_screen" android:required="true" />
   <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
     <uses-feature
@@ -34,6 +37,8 @@
     <meta-data android:name="notch.config" android:value="portrait|landscape" />
     <meta-data android:name="unity.auto-report-fully-drawn" android:value="true" />
     <meta-data android:name="com.google.android.gms.version" android:value="12451000" />
+    <!-- Lets the Quest OS know this app can host immersive VR sessions. -->
+    <meta-data android:name="com.oculus.supportedDevices" android:value="quest|quest2|questpro|quest3|quest3s" />
     <activity
         android:name="dev.allofus.fusioncore.SelectorActivity"
         android:theme="@style/Theme.Material3.Dark.NoActionBar" android:exported="true"
@@ -64,5 +69,23 @@
         android:hardwareAccelerated="true"
         android:launchMode="singleTask"
         android:exported="false" />
+    <!-- StubActivityVr: same dynamic-loading trick as StubActivity, but declared with the
+         Oculus VR intent category so Meta Quest launches the hosted game in immersive VR
+         mode instead of as a flat 2D panel (which crashes VR Unity games).
+         Only used when the target game is detected as a VR app; flat games keep using
+         the plain StubActivity above. No LAUNCHER category, so it never shows in the library. -->
+    <activity
+        android:name="dev.allofus.fusioncore.StubActivityVr"
+        android:theme="@style/UnityThemeSelector"
+        android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|orientation|screenLayout|uiMode|screenSize|smallestScreenSize|fontScale|layoutDirection|density"
+        android:hardwareAccelerated="true"
+        android:launchMode="singleTask"
+        android:exported="false">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN" />
+        <category android:name="com.oculus.intent.category.VR" />
+      </intent-filter>
+      <meta-data android:name="com.oculus.vr.focusaware" android:value="true" />
+    </activity>
   </application>
 </manifest>

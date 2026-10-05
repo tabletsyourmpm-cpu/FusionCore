@@ -34,6 +34,14 @@ public class InstrumentationHooks {
     public static final String EXTRA_ORIGINAL_INTENT = "fusioncore.original_intent";
     public static final String EXTRA_TARGET_ORIENTATION = "fusioncore.target_orientation";
     public static final String EXTRA_FUSION_CONFIG = "fusioncore.config";
+    /**
+     * Optional fully-qualified class name of the stub activity to launch instead of
+     * {@link dev.allofus.fusioncore.StubActivity}. Must extend StubActivity so the
+     * newActivity hook still swaps in the game's real activity class. Used to launch
+     * VR games through {@code StubActivityVr}, whose manifest entry carries the
+     * Oculus VR intent category.
+     */
+    public static final String EXTRA_STUB_CLASS = "fusioncore.stub_class";
 
     public static boolean areHooksInstalled = false;
 
@@ -250,8 +258,28 @@ public class InstrumentationHooks {
         Intent newIntent = new Intent(intent);
         newIntent.putExtra(EXTRA_IS_DYNAMIC_ACTIVITY, true);
         newIntent.putExtra(EXTRA_ORIGINAL_INTENT, intent);
-        newIntent.setComponent(new ComponentName(BuildConfig.APPLICATION_ID, StubActivity.class.getName()));
+        newIntent.setComponent(new ComponentName(BuildConfig.APPLICATION_ID, resolveStubClassName(intent)));
         return newIntent;
+    }
+
+    /**
+     * Picks which stub activity hosts the game. Defaults to StubActivity; callers can
+     * request another stub (e.g. StubActivityVr for VR games) via EXTRA_STUB_CLASS.
+     */
+    private static String resolveStubClassName(Intent intent) {
+        String requested = intent.getStringExtra(EXTRA_STUB_CLASS);
+        if (requested != null && !requested.isEmpty()) {
+            try {
+                Class<?> requestedClass = Class.forName(requested);
+                if (StubActivity.class.isAssignableFrom(requestedClass)) {
+                    return requestedClass.getName();
+                }
+                Log.w(TAG, "Requested stub class is not a StubActivity subclass: " + requested);
+            } catch (ClassNotFoundException e) {
+                Log.w(TAG, "Requested stub class not found: " + requested);
+            }
+        }
+        return StubActivity.class.getName();
     }
 
     private static boolean isDynamicIntent(Intent intent) {

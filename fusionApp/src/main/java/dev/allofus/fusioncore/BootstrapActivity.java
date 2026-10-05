@@ -4,7 +4,9 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
+import android.content.pm.PackageManager;
 import android.content.pm.PackageManager.NameNotFoundException;
+import android.content.pm.ResolveInfo;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Looper;
@@ -20,7 +22,9 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 import dev.allofus.fusioncore.hooks.ClassHooks;
 import dev.allofus.fusioncore.hooks.ClassLoaderHooks;
@@ -42,6 +46,13 @@ public class BootstrapActivity extends AppCompatActivity {
     public static final String EXTRA_USE_ORIGINAL_LIBUNITY = "og_libunity";
     public static final String BACKUP_UNITY_VERSION = "2017.0.0";
     private static final String GLOBAL_METADATA_FILE = "global-metadata.dat";
+    /**
+     * Oculus/Meta intent category marking an activity as an immersive VR app.
+     * Quest only enters immersive VR mode for activities launched with this category;
+     * without it the game opens as a flat 2D panel and VR Unity games crash when
+     * their XR stack initializes.
+     */
+    private static final String VR_INTENT_CATEGORY = "com.oculus.intent.category.VR";
 
     private TextView statusView;
     private TextView progressDetailsView;
@@ -111,7 +122,15 @@ public class BootstrapActivity extends AppCompatActivity {
             return;
         }
 
-        final int targetOrientation = resolveTargetOrientation(launcherComponent);
+        final boolean isVrGame = isVrGame(targetPackage, launcherComponent);
+        // VR games run in immersive mode where screen orientation is meaningless, so don't
+        // force one (the orientation hook skips UNSPECIFIED).
+        final int targetOrientation = isVrGame
+                ? ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                : resolveTargetOrientation(launcherComponent);
+        // Snapshot the game's own launch-intent categories; the plain explicit intent built
+        // below would otherwise drop them (including the VR category on some builds).
+        final Set<String> launchCategories = launchIntent.getCategories();
 
         boolean useOriginalLibUnity = getIntent().getBooleanExtra(EXTRA_USE_ORIGINAL_LIBUNITY, false);
         FusionConfig config;
@@ -157,6 +176,12 @@ public class BootstrapActivity extends AppCompatActivity {
             runOnMainThread(() -> {
                 try {
                     var intent = new Intent(this, launcherClass);
+                    // Preserve the game's original launch-intent categories on the inner intent.
+                    if (launchCategories != null) {
+                        for (String category : launchCategories) {
+                            intent.addCategory(category);
+                        }
+                    }
 
                     // Using the stub activity intent here avoids one extra layer of hooks running.
                     // Its not necessary but could be more performant.
@@ -165,6 +190,19 @@ public class BootstrapActivity extends AppCompatActivity {
                     intentWrapped.putExtra(InstrumentationHooks.EXTRA_ORIGINAL_INTENT, intent);
                     intentWrapped.putExtra(InstrumentationHooks.EXTRA_FUSION_CONFIG, config);
                     intentWrapped.putExtra(InstrumentationHooks.EXTRA_TARGET_ORIENTATION, targetOrientation);
+
+                    if (isVrGame) {
+                        // Route VR games through StubActivityVr, whose manifest entry declares
+                        // the Oculus VR category. That is what makes Quest enter immersive VR
+                        // mode; launching through the plain stub opens the game as a flat 2D
+                        // panel, which crashes VR Unity games.
+                        intent.addCategory(VR_INTENT_CATEGORY);
+                        intentWrapped.addCategory(VR_INTENT_CATEGORY);
+                        intentWrapped.putExtra(InstrumentationHooks.EXTRA_STUB_CLASS,
+                                StubActivityVr.class.getName());
+                        Log.i(TAG, "Launching VR game through StubActivityVr: " + targetPackage);
+                        Toast.makeText(this, "Launching in VR mode", Toast.LENGTH_SHORT).show();
+                    }
 
                     startActivity(intentWrapped);
                     finish();
@@ -408,6 +446,36 @@ public class BootstrapActivity extends AppCompatActivity {
                 out.write(buffer, 0, count);
             }
         }
+    }
+
+    /**
+     * Detects whether the target game's launcher activity declares the Oculus VR intent
+     * category, i.e. whether it is an immersive VR app (Gorilla Tag style games and
+     * their decompiled/remake variants do).
+     */
+    private boolean isVrGame(String targetPackage, ComponentName launcherComponent) {
+        try {
+            Intent vrQuery = new Intent(Intent.ACTION_MAIN);
+            vrQuery.addCategory(VR_INTENT_CATEGORY);
+            vrQuery.setPackage(targetPackage);
+            List<ResolveInfo> vrActivities =
+                    getPackageManager().queryIntentActivities(vrQuery, PackageManager.MATCH_ALL);
+            for (ResolveInfo info : vrActivities) {
+                if (info.activityInfo == null) {
+                    continue;
+                }
+                // ComponentName resolves relative class names (".UnityPlayerActivity") correctly.
+                ComponentName vrComponent =
+                        new ComponentName(info.activityInfo.packageName, info.activityInfo.name);
+                if (vrComponent.equals(launcherComponent)) {
+                    Log.i(TAG, "Target is a VR game: " + launcherComponent.flattenToShortString());
+                    return true;
+                }
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "VR detection failed for " + targetPackage + ", treating as flat game", e);
+        }
+        return false;
     }
 
     private int resolveTargetOrientation(ComponentName launcher) {

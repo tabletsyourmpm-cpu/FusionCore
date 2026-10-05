@@ -45,6 +45,8 @@ public class SelectorActivity extends AppCompatActivity {
     private static final String TAG = "FusionCore";
     private static final int REQUEST_MANAGE_EXTERNAL_STORAGE = 1001;
     private static final String[] UNITY_ABIS = {"arm64-v8a", "armeabi-v7a", "x86_64", "x86"};
+    /** Oculus/Meta intent category marking an activity as an immersive VR app. */
+    private static final String VR_INTENT_CATEGORY = "com.oculus.intent.category.VR";
 
     private String pendingLaunchPackage;
 
@@ -184,9 +186,23 @@ public class SelectorActivity extends AppCompatActivity {
         List<AppEntry> result = new ArrayList<>();
         Set<String> seenPackages = new HashSet<>();
 
+        // Flat games: activities with a LAUNCHER category.
         Intent launchIntent = new Intent(Intent.ACTION_MAIN);
         launchIntent.addCategory(Intent.CATEGORY_LAUNCHER);
-        List<ResolveInfo> activities = pm.queryIntentActivities(launchIntent, PackageManager.MATCH_ALL);
+        collectTargets(pm, launchIntent, result, seenPackages);
+
+        // VR games: some VR builds only declare the Oculus VR category (no LAUNCHER),
+        // so query that too in order to list them.
+        Intent vrIntent = new Intent(Intent.ACTION_MAIN);
+        vrIntent.addCategory(VR_INTENT_CATEGORY);
+        collectTargets(pm, vrIntent, result, seenPackages);
+
+        return result;
+    }
+
+    private void collectTargets(PackageManager pm, Intent query, List<AppEntry> result,
+                                Set<String> seenPackages) {
+        List<ResolveInfo> activities = pm.queryIntentActivities(query, PackageManager.MATCH_ALL);
 
         for (ResolveInfo resolveInfo : activities) {
             String packageName = resolveInfo.activityInfo.packageName;
@@ -243,8 +259,6 @@ public class SelectorActivity extends AppCompatActivity {
             Log.i(TAG, "Found installed target: " + packageName + " (" + label + ")");
             result.add(new AppEntry(packageName, label, icon, versionName, versionCode));
         }
-
-        return result;
     }
 
     private static boolean hasIl2Cpp(ApplicationInfo info) {
