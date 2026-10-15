@@ -19,17 +19,45 @@
   <uses-permission android:name="android.permission.CAMERA" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+  <uses-permission android:name="android.permission.RECORD_AUDIO" />
+  <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+  <!-- Quest / Horizon OS permissions. The game runs inside this app's process, so the system checks
+       these against FusionCore, not the game. Unknown permissions are harmless on other devices. -->
+  <uses-permission android:name="com.oculus.permission.HAND_TRACKING" />
+  <uses-permission android:name="com.oculus.permission.EYE_TRACKING" />
+  <uses-permission android:name="com.oculus.permission.FACE_TRACKING" />
+  <uses-permission android:name="com.oculus.permission.BODY_TRACKING" />
+  <uses-permission android:name="com.oculus.permission.USE_SCENE" />
+  <uses-permission android:name="com.oculus.permission.USE_ANCHOR_API" />
+  <uses-permission android:name="horizonos.permission.HEADSET_CAMERA" />
+  <uses-permission android:name="horizonos.permission.HAND_TRACKING" />
+  <uses-permission android:name="horizonos.permission.EYE_TRACKING" />
+  <uses-permission android:name="horizonos.permission.FACE_TRACKING" />
+  <uses-permission android:name="horizonos.permission.BODY_TRACKING" />
+  <uses-permission android:name="horizonos.permission.USE_SCENE" />
+  <uses-permission android:name="horizonos.permission.USE_ANCHOR_API" />
   <uses-feature android:glEsVersion="0x00030000" />
   <uses-feature android:name="android.hardware.vulkan.version" android:required="false" />
-  <!-- Declared not-required so flat (non-VR) installs are unaffected, but present so
-       the OS knows this app can host immersive VR activities (StubActivityVr). -->
-  <uses-feature android:name="android.hardware.vr.headtracking" android:required="false" android:version="1" />
   <uses-feature android:name="android.software.home_screen" android:required="true" />
   <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+  <!-- This fork is Quest-only: declare a head-tracked VR app so Horizon OS can host immersive tasks. -->
+  <uses-feature android:name="android.hardware.vr.headtracking" android:version="1" android:required="true" />
+  <uses-feature android:name="oculus.software.handtracking" android:required="false" />
+  <uses-feature android:name="com.oculus.feature.PASSTHROUGH" android:required="false" />
+  <uses-feature android:name="com.oculus.experimental.enabled" android:required="false" />
+  <queries>
+    <!-- OpenXR loader runtime discovery (package visibility on Android 11+). -->
+    <provider android:authorities="org.khronos.openxr.runtime_broker;org.khronos.openxr.system_runtime_broker" />
+    <intent>
+      <action android:name="org.khronos.openxr.OpenXRRuntimeService" />
+    </intent>
+  </queries>
     <uses-feature
         android:name="android.hardware.camera"
         android:required="false" />
     <application android:label="@string/app_name" android:icon="@mipmap/app_icon" android:enableOnBackInvokedCallback="true" android:extractNativeLibs="true">
+    <meta-data android:name="com.oculus.supportedDevices" android:value="quest|quest2|questpro|quest3|quest3s" />
+    <meta-data android:name="com.oculus.vr.focusaware" android:value="true" />
     <meta-data android:name="unity.splash-mode" android:value="0" />
     <meta-data android:name="unity.splash-enable" android:value="False" />
     <meta-data android:name="unity.launch-fullscreen" android:value="True" />
@@ -37,8 +65,6 @@
     <meta-data android:name="notch.config" android:value="portrait|landscape" />
     <meta-data android:name="unity.auto-report-fully-drawn" android:value="true" />
     <meta-data android:name="com.google.android.gms.version" android:value="12451000" />
-    <!-- Lets the Quest OS know this app can host immersive VR sessions. -->
-    <meta-data android:name="com.oculus.supportedDevices" android:value="quest|quest2|questpro|quest3|quest3s" />
     <activity
         android:name="dev.allofus.fusioncore.SelectorActivity"
         android:theme="@style/Theme.Material3.Dark.NoActionBar" android:exported="true"
@@ -47,6 +73,7 @@
       <intent-filter>
         <category android:name="android.intent.category.LAUNCHER" />
         <action android:name="android.intent.action.MAIN" />
+        <category android:name="com.oculus.intent.category.2D" />
       </intent-filter>
     </activity>
     <activity
@@ -63,39 +90,29 @@
         android:exported="false" />
     <!-- StubActivity for dynamic loading of unregistered activities -->
     <activity
+        android:name="dev.allofus.fusioncore.SecondaryStubActivity"
+        android:theme="@style/UnityThemeSelector"
+        android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|orientation|screenLayout|uiMode|screenSize|smallestScreenSize|fontScale|layoutDirection|density"
+        android:hardwareAccelerated="true"
+        android:launchMode="standard"
+        android:taskAffinity="dev.allofus.fusioncore.vr"
+        android:resizeableActivity="false"
+        android:exported="false" />
+    <!-- The game's immersive VR task. Separate affinity so Horizon OS creates a new VR task instead of
+         reusing the 2D selector/bootstrap panel task. -->
+    <activity
         android:name="dev.allofus.fusioncore.StubActivity"
         android:theme="@style/UnityThemeSelector"
         android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|orientation|screenLayout|uiMode|screenSize|smallestScreenSize|fontScale|layoutDirection|density"
         android:hardwareAccelerated="true"
         android:launchMode="singleTask"
-        android:exported="false" />
-    <!-- StubActivityVr: same dynamic-loading trick as StubActivity, but declared with the
-         Oculus VR intent category so Meta Quest launches the hosted game in immersive VR
-         mode instead of as a flat 2D panel (which crashes VR Unity games).
-         Only used when the target game is detected as a VR app; flat games keep using
-         the plain StubActivity above. No LAUNCHER category, so it never shows in the library. -->
-    <activity
-        android:name="dev.allofus.fusioncore.StubActivityVr"
-        android:theme="@style/UnityThemeSelector"
-        android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|orientation|screenLayout|uiMode|screenSize|smallestScreenSize|fontScale|layoutDirection|density"
-        android:hardwareAccelerated="true"
-        android:launchMode="singleTask"
+        android:taskAffinity="dev.allofus.fusioncore.vr"
+        android:resizeableActivity="false"
         android:exported="false">
       <intent-filter>
         <action android:name="android.intent.action.MAIN" />
         <category android:name="com.oculus.intent.category.VR" />
       </intent-filter>
-      <meta-data android:name="com.oculus.vr.focusaware" android:value="true" />
     </activity>
-    <!-- FileProvider for sharing FusionCore log files -->
-    <provider
-        android:name="androidx.core.content.FileProvider"
-        android:authorities="${applicationId}.fileprovider"
-        android:exported="false"
-        android:grantUriPermissions="true">
-      <meta-data
-          android:name="android.support.FILE_PROVIDER_PATHS"
-          android:resource="@xml/file_paths" />
-    </provider>
   </application>
 </manifest>

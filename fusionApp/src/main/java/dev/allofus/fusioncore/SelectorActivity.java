@@ -1,7 +1,5 @@
 package dev.allofus.fusioncore;
 
-import android.app.AlertDialog;
-import android.content.ComponentName;
 import android.content.Intent;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageInfo;
@@ -22,18 +20,18 @@ import android.widget.ArrayAdapter;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.ListView;
-import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
-import androidx.core.content.FileProvider;
 
 import java.io.File;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -43,18 +41,16 @@ import java.util.Set;
 import java.util.zip.ZipFile;
 
 import dev.allofus.fusioncore.tools.CrashDetector;
-import dev.allofus.fusioncore.tools.FusionLogger;
+import dev.allofus.fusioncore.tools.GlobalMetadata;
 import dev.allofus.fusioncore.tools.Utilities;
-import dev.allofus.fusioncore.tools.VrLaunchUtils;
 
 public class SelectorActivity extends AppCompatActivity {
     private static final String TAG = "FusionCore";
     private static final int REQUEST_MANAGE_EXTERNAL_STORAGE = 1001;
     private static final String[] UNITY_ABIS = {"arm64-v8a", "armeabi-v7a", "x86_64", "x86"};
-    /** Oculus/Meta intent category marking an activity as an immersive VR app. */
-    private static final String VR_INTENT_CATEGORY = "com.oculus.intent.category.VR";
 
     private String pendingLaunchPackage;
+    private String pendingMetadataPackage;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -64,9 +60,6 @@ public class SelectorActivity extends AppCompatActivity {
         View root = findViewById(R.id.selector_root);
         int basePadding = Math.round(getResources().getDisplayMetrics().density * 16f);
         Utilities.applyWindowInsets(root, basePadding);
-
-        findViewById(R.id.selector_action_vr_test).setOnClickListener(v -> showVrTestDialog());
-        findViewById(R.id.selector_action_logs).setOnClickListener(v -> shareLatestLog());
 
         var handler = new Handler(getMainLooper());
         handler.postDelayed(()->{
@@ -114,7 +107,8 @@ public class SelectorActivity extends AppCompatActivity {
                     holder.icon.setImageDrawable(entry.icon != null ? entry.icon : defaultIcon);
                     holder.name.setText(entry.label);
                     holder.packageName.setText(entry.packageName);
-                    holder.version.setText(Utilities.formatVersionText(entry.versionName, entry.versionCode));
+                    String version = Utilities.formatVersionText(entry.versionName, entry.versionCode);
+                    holder.version.setText(version);
 
                     ImageButton settingsButton = convertView.findViewById(R.id.selector_action_settings);
                     settingsButton.setOnClickListener(v -> {
@@ -125,7 +119,7 @@ public class SelectorActivity extends AppCompatActivity {
 
                     ImageButton folderButton = convertView.findViewById(R.id.selector_action_folder);
                     folderButton.setOnClickListener(v -> {
-                        File folder = Utilities.getExternalFusionCoreDirectory(entry.packageName);
+                        File folder = Utilities.getExternalFusionCoreDirectory(entry.packageName, null);
 
                         if (!folder.exists() && !folder.mkdirs()) {
                             String message = getString(R.string.selector_folder_create_failed, folder.getAbsolutePath());
@@ -195,23 +189,9 @@ public class SelectorActivity extends AppCompatActivity {
         List<AppEntry> result = new ArrayList<>();
         Set<String> seenPackages = new HashSet<>();
 
-        // Flat games: activities with a LAUNCHER category.
         Intent launchIntent = new Intent(Intent.ACTION_MAIN);
         launchIntent.addCategory(Intent.CATEGORY_LAUNCHER);
-        collectTargets(pm, launchIntent, result, seenPackages);
-
-        // VR games: some VR builds only declare the Oculus VR category (no LAUNCHER),
-        // so query that too in order to list them.
-        Intent vrIntent = new Intent(Intent.ACTION_MAIN);
-        vrIntent.addCategory(VR_INTENT_CATEGORY);
-        collectTargets(pm, vrIntent, result, seenPackages);
-
-        return result;
-    }
-
-    private void collectTargets(PackageManager pm, Intent query, List<AppEntry> result,
-                                Set<String> seenPackages) {
-        List<ResolveInfo> activities = pm.queryIntentActivities(query, PackageManager.MATCH_ALL);
+        List<ResolveInfo> activities = pm.queryIntentActivities(launchIntent, PackageManager.MATCH_ALL);
 
         for (ResolveInfo resolveInfo : activities) {
             String packageName = resolveInfo.activityInfo.packageName;
@@ -266,80 +246,11 @@ public class SelectorActivity extends AppCompatActivity {
             }
 
             Log.i(TAG, "Found installed target: " + packageName + " (" + label + ")");
-            result.add(new AppEntry(packageName, label, icon, versionName, versionCode));
-        }
-    }
-
-    /**
-     * "VR Test" button: shows every detected game with its VR/2D classification.
-     * Tapping a game runs the full launch diagnostic (same logic BootstrapActivity
-     * uses) and displays exactly how the game would be launched.
-     */
-    private void showVrTestDialog() {
-        List<AppEntry> targets = resolveInstalledTargets();
-        if (targets.isEmpty()) {
-            Toast.makeText(this, getString(R.string.selector_empty_not_installed), Toast.LENGTH_SHORT).show();
-            return;
+            result.add(new AppEntry(packageName, label, icon, versionName, versionCode,
+                    GlobalMetadata.isEncrypted(info)));
         }
 
-        String[] labels = new String[targets.size()];
-        for (int i = 0; i < targets.size(); i++) {
-            AppEntry entry = targets.get(i);
-            ComponentName launcher = VrLaunchUtils.resolveLauncherComponent(this, entry.packageName());
-            boolean vr = VrLaunchUtils.isVrGame(getPackageManager(), entry.packageName(), launcher);
-            labels[i] = entry.label() + " (" + entry.packageName() + ") [" + (vr ? "VR" : "2D") + "]";
-        }
-
-        new AlertDialog.Builder(this)
-                .setTitle(R.string.selector_vr_test_title)
-                .setMessage(R.string.selector_vr_test_pick)
-                .setItems(labels, (dialog, which) ->
-                        showLaunchDiagnostic(targets.get(which).packageName()))
-                .setNegativeButton(android.R.string.cancel, null)
-                .show();
-    }
-
-    private void showLaunchDiagnostic(String packageName) {
-        String plan = VrLaunchUtils.describeLaunchPlan(this, packageName);
-        FusionLogger.i("VrTest", "Launch diagnostic for " + packageName + ":\n" + plan);
-
-        TextView textView = new TextView(this);
-        textView.setText(plan);
-        int padding = Math.round(getResources().getDisplayMetrics().density * 20f);
-        textView.setPadding(padding, padding, padding, padding);
-        textView.setTextIsSelectable(true);
-        ScrollView scrollView = new ScrollView(this);
-        scrollView.addView(textView);
-
-        new AlertDialog.Builder(this)
-                .setTitle(R.string.selector_vr_test_result_title)
-                .setView(scrollView)
-                .setPositiveButton(android.R.string.ok, null)
-                .setNeutralButton(R.string.selector_view_logs, (d, w) -> shareLatestLog())
-                .show();
-    }
-
-    /**
-     * "Logs" button: shares the latest FusionCore log file so it can be sent
-     * for debugging.
-     */
-    private void shareLatestLog() {
-        File log = FusionLogger.getLatestLogFile();
-        if (log == null || !log.exists()) {
-            Toast.makeText(this, getString(R.string.selector_no_log_yet), Toast.LENGTH_LONG).show();
-            return;
-        }
-        try {
-            Uri uri = FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", log);
-            Intent share = new Intent(Intent.ACTION_SEND);
-            share.setType("text/plain");
-            share.putExtra(Intent.EXTRA_STREAM, uri);
-            share.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-            startActivity(Intent.createChooser(share, getString(R.string.selector_log_share_title)));
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to share log", e);
-            Toast.makeText(this, Log.getStackTraceString(e), Toast.LENGTH_LONG).show();
-        }
+        return result;
     }
 
     private static boolean hasIl2Cpp(ApplicationInfo info) {
@@ -391,10 +302,17 @@ public class SelectorActivity extends AppCompatActivity {
     }
 
     private void launchBootstrap(String packageName) {
+        if (requestMetadataIfNeeded(packageName)) {
+            return;
+        }
+
         Intent intent = new Intent(this, BootstrapActivity.class);
         intent.putExtra(BootstrapActivity.EXTRA_TARGET_PACKAGE, packageName);
         intent.putExtra(BootstrapActivity.EXTRA_USE_ORIGINAL_LIBUNITY,
                 !FusionSettings.getUseUnstrippedLibUnityForGame(this, packageName));
+        intent.putExtra(BootstrapActivity.EXTRA_USE_IL2CPP2MONO,
+                FusionSettings.getUseIl2Cpp2Mono(this, packageName));
+
         intent.addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION | Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         startActivity(intent);
         //noinspection deprecation
@@ -415,9 +333,11 @@ public class SelectorActivity extends AppCompatActivity {
                     } else {
                         Log.e(TAG, "Permission denied: " +permission);
                     }
+                }
 
-                    String packageName = pendingLaunchPackage;
-                    pendingLaunchPackage = null;
+                String packageName = pendingLaunchPackage;
+                pendingLaunchPackage = null;
+                if (packageName != null) {
                     launchBootstrap(packageName);
                 }
             });
@@ -426,6 +346,10 @@ public class SelectorActivity extends AppCompatActivity {
         if (!hasExternalStorageManagerAccess()) {
             pendingLaunchPackage = packageName;
             requestExternalStorageManagerAccess();
+            return;
+        }
+
+        if (requestMetadataIfNeeded(packageName)) {
             return;
         }
 
@@ -451,6 +375,61 @@ public class SelectorActivity extends AppCompatActivity {
         }
 
         launchBootstrap(packageName);
+    }
+
+    private final ActivityResultLauncher<String[]> pickMetadataLauncher =
+            registerForActivityResult(new ActivityResultContracts.OpenDocument(), uri -> {
+                String packageName = pendingMetadataPackage;
+                pendingMetadataPackage = null;
+                if (uri == null || packageName == null) {
+                    return;
+                }
+
+                new Thread(() -> {
+                    boolean installed;
+                    try (InputStream in = getContentResolver().openInputStream(uri)) {
+                        installed = in != null && GlobalMetadata.installOverride(in, packageName);
+                    } catch (Exception e) {
+                        Log.e(TAG, "Failed to install metadata override for " + packageName, e);
+                        installed = false;
+                    }
+
+                    boolean success = installed;
+                    runOnUiThread(() -> {
+                        if (success) {
+                            maybeLaunchBootstrap(packageName);
+                        } else {
+                            Toast.makeText(this, getString(R.string.selector_metadata_invalid), Toast.LENGTH_LONG).show();
+                        }
+                    });
+                }).start();
+            });
+
+    private boolean requestMetadataIfNeeded(String packageName) {
+        if (FusionSettings.getUseIl2Cpp2Mono(this, packageName)) {
+            return false;
+        }
+        if (GlobalMetadata.hasValidOverride(packageName)) {
+            return false;
+        }
+        try {
+            if (!GlobalMetadata.isEncrypted(getPackageManager().getApplicationInfo(packageName, 0))) {
+                return false;
+            }
+        } catch (PackageManager.NameNotFoundException e) {
+            return false;
+        }
+
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.selector_metadata_title)
+                .setMessage(getString(R.string.selector_metadata_message))
+                .setPositiveButton(R.string.selector_metadata_select, (dialog, which) -> {
+                    pendingMetadataPackage = packageName;
+                    pickMetadataLauncher.launch(new String[]{"*/*"});
+                })
+                .setNegativeButton(android.R.string.cancel, null)
+                .show();
+        return true;
     }
 
     private boolean hasExternalStorageManagerAccess() {
@@ -483,7 +462,7 @@ public class SelectorActivity extends AppCompatActivity {
     }
 
     private record AppEntry(String packageName, String label, Drawable icon, String versionName,
-                            long versionCode) {
+                            long versionCode, boolean encryptedMetadata) {
 
         @NonNull
         @Override
