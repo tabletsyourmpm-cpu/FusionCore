@@ -3,6 +3,8 @@ package dev.allofus.fusioncore.tools
 import android.os.Parcelable
 import kotlinx.parcelize.Parcelize
 
+// todo: convert to a standard lib class because passing a
+//  parcelable across classloader namespaces is a bad idea
 @Parcelize
 class FusionConfig(
     /** The package ID of the game. */
@@ -27,8 +29,12 @@ class FusionConfig(
     @JvmField var unityVersion: String,
     /** Whether to use the original libunity.so from the game or the one provided by Fusion. */
     @JvmField var useOriginalLibUnity: Boolean,
+    /** whether its il2cpp2mono or not*/
+    @JvmField var isIl2Cpp2Mono: Boolean,
     /** Variables to encode in the FUSION_VARIABLES environment variable. */
     @JvmField var fusionVariables: Array<String>,
     /** Auxiliary folders to load BepInEx plugins from. */
-    @JvmField var auxiliaryPluginFolders: Array<String>
+    @JvmField var auxiliaryPluginFolders: Array<String>,
+    /** Mapped IL2CPP api calls. Format: original_name:mapped_name */
+    @JvmField var il2cppApiMap: Map<String, String>
 ) : Parcelable
