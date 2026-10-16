@@ -4,17 +4,12 @@
     <string name="selector_title">Select a game</string>
     <string name="selector_subtitle">Supported packages are listed below.</string>
     <string name="selector_action_settings">Settings</string>
-    <string name="selector_vr_test">VR Test</string>
-    <string name="selector_view_logs">Logs</string>
-    <string name="selector_vr_test_title">VR launch test</string>
-    <string name="selector_vr_test_pick">Pick a game to test how it would launch:</string>
-    <string name="selector_vr_test_result_title">Launch diagnostic</string>
-    <string name="selector_no_log_yet">No log file yet. Launch a game or run a VR test first.</string>
-    <string name="selector_log_share_title">Share FusionCore log</string>
     <string name="settings_title">Settings</string>
     <string name="settings_action_back">Back</string>
     <string name="settings_libunity_title">Download unstripped libunity</string>
     <string name="settings_libunity_desc">You should turn this on if the game you\'re using crashes due to Unity getting mad.</string>
+    <string name="settings_il2cpp2mono_title" translatable="false">Use Il2Cpp2Mono (EXPERIMENTAL)</string>
+    <string name="settings_il2cpp2mono_desc" translatable="false">If you have the managed dlls, you can use this to make the game use mono! BepinEx is currently DISABLED under this. and it could be unstable</string>
     <string name="selector_empty_not_configured">No supported packages configured..</string>
     <string name="selector_empty_not_installed">No supported packages are currently installed.</string>
     <string name="selector_storage_permission_prompt">Grant "All files access" so Fusion Core can write BepInEx files to Documents.</string>
@@ -45,4 +40,11 @@
     <string name="selector_no_file_manager">No file manager found capable of opening this directory</string>
     <string name="selector_folder_create_failed">Failed to make folder: %1$s</string>
     <string name="settings_automatic">Automatic</string>
+    <string name="bootstrap_status_extracting_mono_dlls">Extracting Mono managed DLLs…</string>
+    <string name="bootstrap_request_dlls">Please provide the mono dlls</string>
+    <string name="boostrap_file_request_il2cpp_map">Please Provide the deobfuscation map for the il2cpp API</string>
+    <string name="selector_metadata_title">Decrypted metadata required</string>
+    <string name="selector_metadata_message">This game\'s global-metadata.dat is encrypted and it can\'t be decrypted automatically.\n\nSelect a decrypted global-metadata.dat for this game version.</string>
+    <string name="selector_metadata_select">Select file</string>
+    <string name="selector_metadata_invalid">This is not a valid metadata file.</string>
 </resources>
