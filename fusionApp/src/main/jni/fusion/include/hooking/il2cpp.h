@@ -3,7 +3,7 @@
 #define FUSIONCORE_IL2CPP_H
 
 #include <cstdint>
-
+static void *handle = nullptr;
 using il2cpp_init_t = int(*)(char *domain_name);
 using il2cpp_method_get_name_t = const char *(*)(void *method);
 
@@ -15,9 +15,6 @@ void *il2cpp_get_handle();
 
 // returns the base address of libil2cpp.so
 uintptr_t il2cpp_get_library_base();
-
-// wrapper for il2cpp_method_get_name
-const char *il2cpp_method_get_name(void *method);
 
 // wrapper for il2cpp_init. if hooked, this will
 // call the original function
